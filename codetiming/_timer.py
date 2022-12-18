@@ -46,9 +46,13 @@ class Timer(ContextDecorator):
     timers: ClassVar[Timers] = Timers()
     name: Optional[str] = None
     text: Union[str, FloatArg, Callable[[float], str]] = "Elapsed time: {:0.4f} seconds"
+    totaltext: Union[str, FloatArg, Callable[[float], str]] = "Total time: {:0.4f} seconds"
     initial_text: Union[bool, str, FloatArg] = False
     logger: Optional[Callable[[str], None]] = print
     last: float = field(default=math.nan, init=False, repr=False)
+    tick: int = field(default=0, init=False, repr=False)
+    period: int = field(default=100, init=False, repr=False)
+    min : Optional[int] = 0
     _start_time: Optional[float] = field(default=None, init=False, repr=False)
 
     def start(self) -> None:
@@ -74,11 +78,12 @@ class Timer(ContextDecorator):
             raise TimerError("Timer is not running. Use .start() to start it")
 
         # Calculate elapsed time
+        self.tick += 1
         self.last = time.perf_counter() - self._start_time
         self._start_time = None
 
         # Report elapsed time
-        if self.logger:
+        if self.logger and ((self.last >= self.min)) :
             if callable(self.text):
                 text = self.text(self.last)
             else:
@@ -87,11 +92,25 @@ class Timer(ContextDecorator):
                     "milliseconds": self.last * 1000,
                     "seconds": self.last,
                     "minutes": self.last / 60,
+                    "tick": self.tick
                 }
                 text = self.text.format(self.last, **attributes)
             self.logger(str(text))
         if self.name:
             self.timers.add(self.name, self.last)
+            if (self.tick % self.period) == 0:
+                if callable(self.totaltext):
+                    text = self.totaltext(self.timers.total(self.name))
+                else:
+                    attributes = {
+                        "name": self.name,
+                        "milliseconds": self.last * 1000,
+                        "seconds": self.last,
+                        "minutes": self.last / 60,
+                        "tick": self.tick
+                    }
+                    text = self.totaltext.format(self.timers.total(self.name), **attributes)
+                self.logger(str(text))
 
         return self.last
 
